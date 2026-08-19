@@ -4,7 +4,7 @@ Caph is a physics sandbox puzzle game. Guide the red object to touch the green
 object by drawing solid, wire (rope), or bendable shapes that interact with
 gravity.
 
-![Caph ScreenShot](/doc/Caph.png)
+![Caph ScreenShot](/doc/caph.png)
 
 ## Version
 
