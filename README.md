@@ -4,9 +4,11 @@ Caph is a physics sandbox puzzle game. Guide the red object to touch the green
 object by drawing solid, wire (rope), or bendable shapes that interact with
 gravity.
 
+![Caph ScreenShot](/doc/Caph.png)
+
 ## Version
 
-**0.1.0 – ArcaOS Release 1**
+**1.1r3 – ArcaOS Release 3**
 
 ## License
 
@@ -149,3 +151,4 @@ The minimum resolution is 1024 × 768; lower values in the config are ignored.
 ## Links
 
 - Upstream: https://sourceforge.net/projects/caphgame/
+- ArcaOS Port: https://github.com/OS2World/GAME-SDL-EDUCATIONAL-Caph
