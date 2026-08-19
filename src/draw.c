@@ -23,6 +23,8 @@
 
 #include <png.h>
 
+#include <SDL2/SDL.h>
+
 #ifdef _OPENGL
 # include <GL/gl.h>
 # include <GL/glext.h>
@@ -251,7 +253,6 @@ int static
 img_load_png(const char *png, raw_img_t *raw)
 {
 	unsigned char	sig[8];
-	int 		ret;
 
 	if (raw == NULL)
 		return -1;
@@ -265,7 +266,7 @@ img_load_png(const char *png, raw_img_t *raw)
 		return -1;
 	}
 
-	ret = fread(sig, 8, 1, fp);
+	(void) fread(sig, 8, 1, fp);
 
 	if (png_sig_cmp(sig, 0, 8))
 	{
@@ -386,7 +387,7 @@ void draw_load_bg(const char *img)
 	temp = SDL_CreateRGBSurfaceFrom(bgimg.raw, bgimg.width, bgimg.height,
 			24, bgimg.width * 3, 0, 0, 0, 0);
 	sbg = SDL_CreateRGBSurface(0, screen_w, screen_h, 24, 0, 0, 0, 0);
-	SDL_SoftStretch(temp, NULL, sbg, NULL);
+	SDL_BlitScaled(temp, NULL, sbg, NULL);
 	SDL_FreeSurface(temp);
 	free(bgimg.raw);
 #endif
@@ -432,7 +433,7 @@ void draw_load_bs(const char *img)
 
 	sbs = SDL_CreateRGBSurfaceFrom(bsimg.raw, bsimg.width, bsimg.height,
 			32, bsimg.width * 4, 0, 0, 0, 0);
-	SDL_SetColorKey(sbs, SDL_SRCCOLORKEY, 0);
+	SDL_SetColorKey(sbs, SDL_TRUE, 0);
 #endif
 }
 

@@ -21,8 +21,7 @@
 #include <string.h>
 #include <math.h>
 
-#include <SDL/SDL.h>
-#undef	main
+#include <SDL2/SDL.h>
 
 #include "caph.h"
 #include "draw.h"
@@ -34,13 +33,13 @@
 #else
 # include <unistd.h>
 # include <sys/types.h>
+# include <sys/stat.h>
 #endif
 
 #define SYS_PRINT	1
 #define SYS_DATA_DIR	"../share/caph/"
 
 #define DATA_CONFIG		"caph.conf"
-#define HOME_CONFIG		".caph.conf"
 #define DATA_PAPER		"paper.png"
 #define DATA_BRUSH		"brush.png"
 #define DATA_MAPS_LIST		"maps/maps.list"
@@ -50,7 +49,7 @@ sys_get_data_dir()
 {
 	static char dir[256];
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__OS2__)
 	strcpy(dir, SYS_DATA_DIR);
 	return dir;
 #else
@@ -79,40 +78,54 @@ sys_chdir(const char *name)
 #if defined(_WIN32)
 	SetCurrentDirectory(name);
 #else
-	int	ret;
+	(void) chdir(name);
+#endif
+}
 
-	ret = chdir(name);
+/* Create all directories in path (like mkdir -p). */
+static void
+sys_mkdir_p(char *path)
+{
+#if !defined(_WIN32)
+	char *p;
+	for (p = path + 1; *p; p++) {
+		if (*p == '/' || *p == '\\') {
+			char c = *p;
+			*p = '\0';
+			mkdir(path, 0755);
+			*p = c;
+		}
+	}
+	mkdir(path, 0755);
 #endif
 }
 
 static const char *
 sys_get_config()
 {
-	static char dir[256];
+	static char path[600];
+	static char confdir[512];
+	const char *xdg;
 	const char *home;
 
 #if defined(_WIN32)
-	strcpy(dir, DATA_CONFIG);
-	return dir;
+	strcpy(path, DATA_CONFIG);
+	return path;
 #else
-	home = getenv("HOME");
-
-	if (home)
-		strcpy(dir, home);
-	else
-		return "";
-
-	char	*p = dir;
-
-	while (*p != '\0') ++p;
-
-	if (*(p - 1) != '/') {
-		*p++ = '/';
-		*p++ = '\0';
+	/* XDG Base Directory: prefer $XDG_CONFIG_HOME, fall back to $HOME/.config */
+	xdg = getenv("XDG_CONFIG_HOME");
+	if (xdg && xdg[0] != '\0') {
+		snprintf(confdir, sizeof(confdir), "%s/caph", xdg);
+	} else {
+		home = getenv("HOME");
+		if (!home || home[0] == '\0')
+			return DATA_CONFIG;
+		snprintf(confdir, sizeof(confdir), "%s/.config/caph", home);
 	}
 
-	strcat(dir, HOME_CONFIG);
-	return dir;
+	sys_mkdir_p(confdir);
+	snprintf(path, sizeof(path), "%s/caph.conf", confdir);
+	return path;
 #endif
 }
 
@@ -120,6 +133,31 @@ int		screen_w;
 int		screen_h;
 uint8_t		*screen_pixels;
 SDL_Surface 	*screen;
+
+static SDL_Window *window = NULL;
+
+/* Scale the virtual back buffer to the window surface and flip. */
+static void
+caph_present(void)
+{
+	SDL_Surface *dst = SDL_GetWindowSurface(window);
+	if (!dst) return;
+	if (dst->w != screen->w || dst->h != screen->h) {
+		SDL_Rect r;
+		float sx = (float) dst->w / (float) screen->w;
+		float sy = (float) dst->h / (float) screen->h;
+		float scale = (sx < sy) ? sx : sy;
+		r.w = (int) (screen->w * scale);
+		r.h = (int) (screen->h * scale);
+		r.x = (dst->w - r.w) / 2;
+		r.y = (dst->h - r.h) / 2;
+		SDL_FillRect(dst, NULL, 0);
+		SDL_BlitScaled(screen, NULL, dst, &r);
+	} else {
+		SDL_BlitSurface(screen, NULL, dst, NULL);
+	}
+	SDL_UpdateWindowSurface(window);
+}
 
 #define	STRIP_SIZE		(512)
 
@@ -130,7 +168,7 @@ static int	p_flags;
 static float	p_dist_lim1;
 static float	p_dist_lim2;
 
-static int	time;
+static int	t_run;
 static int	mode;
 
 static int	play_cond_time;
@@ -239,7 +277,7 @@ phys_flags_draw()
 			(p_flags & CONCAVE_FLAG_LOOP) ? "L" : "_",
 			(p_flags & CONCAVE_FLAG_BKGROUND) ? "G" : "_",
 			(p_flags & CONCAVE_FLAG_NOCROSS) ? "H" : "_",
-			(time) ? "T" : "_",
+			(t_run) ? "T" : "_",
 			(mode) ? "E" : "P");
 #endif
 }
@@ -254,7 +292,6 @@ int main(int argc, char *argv[])
 	float fade_a, fail_a, time_a;
 	int fs = 0;
 	int run = 1;
-	int ret;
 	FILE *conf;
 	const char *conf_name;
 
@@ -276,7 +313,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (conf) {
-		ret = fscanf(conf, "%i %i %i",
+		(void) fscanf(conf, "%i %i %i",
 				&screen_w,
 				&screen_h,
 				&fs);
@@ -291,9 +328,13 @@ int main(int argc, char *argv[])
 	if (screen_w < 320 || screen_w > (1024*4) ||
 			screen_h < 240 || screen_h > (1024*4))
 	{
-		fprintf(stderr, "%s:%i [PANIC] Ivalid config values\n",
+		fprintf(stderr, "%s:%i [PANIC] Invalid config values\n",
 				__FILE__, __LINE__);
 	}
+
+	/* Enforce minimum display resolution */
+	if (screen_w < 1024) screen_w = 1024;
+	if (screen_h < 768)  screen_h = 768;
 
 	p_dist_lim1 = 8.0f;
 	p_dist_lim2 = 36.0f;
@@ -304,29 +345,49 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	int sdl_flags = (fs ? SDL_FULLSCREEN : 0) |
-			SDL_DOUBLEBUF |
-			SDL_HWSURFACE;
+	{
+		Uint32 wflags = SDL_WINDOW_SHOWN;
+		if (fs) wflags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 
 #ifdef _OPENGL
-	SDL_GL_SetAttribute(SDL_GL_BUFFER_SIZE, 24);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	sdl_flags |= SDL_OPENGL;
+		SDL_GL_SetAttribute(SDL_GL_BUFFER_SIZE, 24);
+		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+		wflags |= SDL_WINDOW_OPENGL;
 #endif
 
-	screen = SDL_SetVideoMode(screen_w, screen_h, 32, sdl_flags);
+		window = SDL_CreateWindow("Caph",
+				SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+				screen_w, screen_h, wflags);
 
-	if (screen == NULL) {
-		fprintf(stderr, "%s:%i [PANIC] SDL_SetVideoMode failed: %s \n",
-				__FILE__, __LINE__, SDL_GetError());
-		SDL_Quit();
-		exit(EXIT_FAILURE);
+		if (window == NULL) {
+			fprintf(stderr, "%s:%i [PANIC] SDL_CreateWindow failed: %s \n",
+					__FILE__, __LINE__, SDL_GetError());
+			SDL_Quit();
+			exit(EXIT_FAILURE);
+		}
 	}
 
-	SDL_WM_SetCaption("Caph", "Caph");
-	SDL_ShowCursor(0);
+	SDL_ShowCursor(SDL_DISABLE);
+
+	/* Virtual back buffer — game renders here at native resolution. */
+	{
+		SDL_Surface *wsurf = SDL_GetWindowSurface(window);
+		screen = SDL_CreateRGBSurface(0, screen_w, screen_h,
+				wsurf->format->BitsPerPixel,
+				wsurf->format->Rmask,
+				wsurf->format->Gmask,
+				wsurf->format->Bmask,
+				wsurf->format->Amask);
+		if (screen == NULL) {
+			fprintf(stderr, "%s:%i [PANIC] SDL_CreateRGBSurface failed: %s \n",
+					__FILE__, __LINE__, SDL_GetError());
+			SDL_DestroyWindow(window);
+			SDL_Quit();
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	screen_pixels = screen->pixels;
 
@@ -344,7 +405,7 @@ int main(int argc, char *argv[])
 	maps_list_load(DATA_MAPS_LIST);
 	maps_load_this();
 
-	time = 1;
+	t_run = 1;
 	mode = 0;
 
 	play_cond_time = 0;
@@ -377,6 +438,21 @@ int main(int argc, char *argv[])
 					break;
 
 				case SDL_KEYDOWN:
+					/* Ctrl+X: quit immediately, any mode */
+					if (event.key.keysym.sym == SDLK_x &&
+					    (event.key.keysym.mod & KMOD_CTRL)) {
+						run = 0;
+						break;
+					}
+					/* Alt+Enter: toggle fullscreen */
+					if (event.key.keysym.sym == SDLK_RETURN &&
+					    (event.key.keysym.mod & KMOD_ALT)) {
+						fs ^= 1;
+						SDL_SetWindowFullscreen(window,
+							fs ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+						caph_present();
+						break;
+					}
 					switch ((int) event.key.keysym.sym) {
 						case SDLK_q:
 							run = 0;
@@ -445,7 +521,7 @@ int main(int argc, char *argv[])
 							break;
 
 						case SDLK_t:
-							time ^= 1;
+							t_run ^= 1;
 							break;
 
 						case SDLK_l:
@@ -590,7 +666,7 @@ int main(int argc, char *argv[])
 			fr_tval = 0;
 		}
 
-		if (time) {
+		if (t_run) {
 			phys_update((float) dt * 0.001f);
 
 			if (phys_play_cond) {
@@ -668,7 +744,7 @@ int main(int argc, char *argv[])
 				if (fail_g) fail_g = 0;
 			}
 
-			if (!time) {
+			if (!t_run) {
 				if (time_g) {
 					time_a = time_a + 2.0f * (float) dt * 0.001f;
 					time_a = (time_a > 0.5f) ? 0.5f : time_a;
@@ -689,9 +765,9 @@ int main(int argc, char *argv[])
 
 			SDL_UnlockSurface(screen);
 #ifdef _OPENGL
-			SDL_GL_SwapBuffers();
+			SDL_GL_SwapWindow(window);
 #else
-			SDL_Flip(screen);
+			caph_present();
 #endif
 		}
 
@@ -700,6 +776,8 @@ int main(int argc, char *argv[])
 	maps_list_free();
 	phys_close();
 
+	SDL_FreeSurface(screen);
+	SDL_DestroyWindow(window);
 	SDL_Quit();
 }
 

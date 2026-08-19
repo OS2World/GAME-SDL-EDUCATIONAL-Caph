@@ -1,0 +1,34 @@
+# Caph OS/2 Makefile (SDL2, GCC/EMX)
+# Set build env first: compile.cmd sets EMXOMFLD_* and calls this makefile.
+
+CC      = gcc
+CFLAGS  = -O2 -Wall \
+          -I./include \
+          -I/@unixroot/usr/include/SDL2 \
+          -I/@unixroot/usr/include/libpng16 \
+          -D__OS2__
+LDFLAGS = -Zomf -Zhigh-mem -Zmap
+LIBS    = -lSDL2 -lpng -lm
+
+DEFFILE = src/caph.def
+
+SRCS = \
+  src/caph.c \
+  src/draw.c \
+  src/maps.c \
+  src/phys.c
+
+OBJS = $(SRCS:.c=.o)
+
+TARGET = caph.exe
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(DEFFILE) $(LIBS)
+
+.c.o:
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+clean:
+	rm -f $(OBJS) $(TARGET) *.map

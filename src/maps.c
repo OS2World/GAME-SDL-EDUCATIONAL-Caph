@@ -146,7 +146,6 @@ load_map(const char *map)
 	int 			flags;
 	int			i, n;
 	int			obj, ptn;
-	int			ret;
 
 	FILE *fd = fopen(map, "r");
 
@@ -171,7 +170,7 @@ load_map(const char *map)
 	}
 	while (1);
 
-	ret = fscanf(fd, "%s", id);
+	(void) fscanf(fd, "%s", id);
 
 	if (strcmp(id, "display")) {
 		fprintf(stderr, "%s:%i [PANIC] Invalid map file: %s \n",
@@ -179,7 +178,7 @@ load_map(const char *map)
 		exit(EXIT_FAILURE);
 	}
 
-	ret = fscanf(fd, "%i %i", &map_w, &map_h);
+	(void) fscanf(fd, "%i %i", &map_w, &map_h);
 
 	if (map_w < 320 || map_h < 240) {
 		fprintf(stderr, "%s:%i [PANIC] Invalid map file: %s \n",
@@ -188,24 +187,24 @@ load_map(const char *map)
 	}
 
 	do {
-		ret = fscanf(fd, "%s", id);
+		(void) fscanf(fd, "%s", id);
 
 		if (strcmp(id, "object")) break;
 
-		ret = fscanf(fd, "%x", &flags);
-		ret = fscanf(fd, "%i", &n);
+		(void) fscanf(fd, "%x", &flags);
+		(void) fscanf(fd, "%i", &n);
 
 		curr = phys_alloc(n);
 		curr->flags = flags;
 
 		for (i = 0; i < n; ++i) {
-			ret = fscanf(fd, "%f %f",
+			(void) fscanf(fd, "%f %f",
 					&curr->pts[i].x,
 					&curr->pts[i].y);
 		}
 
 		for (i = 0; i < n; ++i) {
-			ret = fscanf(fd, "%f %f",
+			(void) fscanf(fd, "%f %f",
 					&curr->last[i].x,
 					&curr->last[i].y);
 		}
@@ -223,7 +222,7 @@ load_map(const char *map)
 	curr = end = phys_get_all();
 
 	do {
-		ret = fscanf(fd, "%i", &n);
+		(void) fscanf(fd, "%i", &n);
 
 		curr->ln = n;
 
@@ -232,13 +231,13 @@ load_map(const char *map)
 			curr->lns = malloc(sizeof(link_t) * n);
 
 			for (i = 0; i < n; ++i) {
-				ret = fscanf(fd, "%i %i", &obj, &ptn);
+				(void) fscanf(fd, "%i %i", &obj, &ptn);
 				cx = get_object_by_number(obj);
 				curr->lns[i].beg = cx->pts + ptn;
-				ret = fscanf(fd, "%i %i", &obj, &ptn);
+				(void) fscanf(fd, "%i %i", &obj, &ptn);
 				cx = get_object_by_number(obj);
 				curr->lns[i].end = cx->pts + ptn;
-				ret = fscanf(fd, "%f %f",
+				(void) fscanf(fd, "%f %f",
 						&curr->lns[i].dist,
 						&curr->lns[i].wght);
 			}
@@ -248,7 +247,7 @@ load_map(const char *map)
 
 		if (curr == end) break;
 
-		ret = fscanf(fd, "%s", id);
+		(void) fscanf(fd, "%s", id);
 
 		if (strcmp(id, "links")) {
 			fprintf(stderr, "%s:%i [PANIC] Invalid map file: %s \n",

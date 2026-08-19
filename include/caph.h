@@ -20,8 +20,7 @@
 
 #include <stdint.h>
 
-#include <SDL/SDL.h>
-#undef	main
+#include <SDL2/SDL.h>
 
 extern int		screen_w;
 extern int		screen_h;
